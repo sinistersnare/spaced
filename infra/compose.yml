@@ -1,0 +1,25 @@
+# Local development compose — assumes you have the roomy caddy stack running
+# separately (cd ~/github.com/muni-town/roomy && docker compose up).
+#
+# The lab-bridge connects to PDS_URL / LEAF_URL defined in
+# packages/lab-bridge/.env.local (override .env defaults).
+#
+# NOTE: @roomy/sdk is currently a file: reference to a local path.
+# Before running `compose:build`, either:
+#   a) Mount the SDK source into the build context, OR
+#   b) Replace the dep in packages/lab-bridge/package.json:
+#      "@roomy/sdk": "git+https://github.com/muni-town/roomy.git#workspace=packages/sdk"
+
+name: spaced-local
+
+services:
+  lab-bridge:
+    build:
+      context: ..
+      dockerfile: packages/lab-bridge/Dockerfile
+    env_file:
+      - ../packages/lab-bridge/.env
+      - ../packages/lab-bridge/.env.local
+    restart: unless-stopped
+    ports:
+      - "3401:3401"

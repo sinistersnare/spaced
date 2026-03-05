@@ -7,6 +7,8 @@ if (!BOT_DID || !BOT_APP_PASSWORD) {
   throw new Error("BOT_DID and BOT_APP_PASSWORD environment variables required.");
 }
 
+export const PDS_URL = process.env["PDS_URL"] ?? "https://bsky.social";
+
 export const LEAF_URL = process.env["LEAF_URL"] ?? "https://leaf-dev.muni.town";
 export const LEAF_SERVER_DID =
   process.env["LEAF_SERVER_DID"] ?? `did:web:${new URL(LEAF_URL).hostname}`;

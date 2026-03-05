@@ -1,0 +1,29 @@
+# Production compose skeleton.
+#
+# Secrets are supplied via environment variables (e.g. from a .env.prod file
+# loaded by dotenvx, or injected by your CI/CD system).
+#
+# Before building: replace the @roomy/sdk file: reference in
+# packages/lab-bridge/package.json with a published/git+https reference.
+
+name: spaced-prod
+
+services:
+  lab-bridge:
+    build:
+      context: ..
+      dockerfile: packages/lab-bridge/Dockerfile
+    environment:
+      - NODE_ENV=production
+      - BOT_DID=${BOT_DID}
+      - BOT_APP_PASSWORD=${BOT_APP_PASSWORD}
+      - SPACE_DIDS=${SPACE_DIDS}
+      - PDS_URL=${PDS_URL:-https://bsky.social}
+      - LEAF_URL=${LEAF_URL:-https://leaf-dev.muni.town}
+      - LEAF_SERVER_DID=${LEAF_SERVER_DID}
+      - STREAM_NSID=${STREAM_NSID:-space.roomy.space.personal.dev}
+      - STREAM_HANDLE_NSID=${STREAM_HANDLE_NSID:-space.roomy.space.handle.dev}
+      - PORT=${PORT:-3401}
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3401}:${PORT:-3401}"

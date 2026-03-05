@@ -15,7 +15,7 @@
  * See NEXT_STEPS.md for the full discussion.
  */
 
-import type { RoomyClient } from "@roomy/sdk";
+import type { AtpAgent } from "@atproto/api";
 import { makeAssignment } from "../lexicons/assignment.js";
 import { LEXICON } from "../constants.js";
 
@@ -24,8 +24,8 @@ export interface SubmitContext {
   authorDid: string;
   /** Raw arguments after "/submit" */
   args: string[];
-  /** Roomy client for writing back to the channel */
-  client: RoomyClient;
+  /** ATProto agent for writing records to the PDS */
+  agent: AtpAgent;
   /** AT-URI of the active lesson in this channel (set by the teacher via /lecture) */
   activeLessonUri: string | undefined;
 }
@@ -53,7 +53,7 @@ export async function handleSubmit(ctx: SubmitContext): Promise<string> {
   // TODO: Write record to student's PDS via ctx.client.agent.api.com.atproto.repo.createRecord
   // Blocked on: delegated write auth (see NEXT_STEPS.md)
   // For now, write to the bot's own PDS under edu.roomy.assignment
-  const assignmentUri = await writeToBotPds(ctx.client, record);
+  const assignmentUri = await writeToBotPds(ctx.agent, record);
 
   // TODO: Enqueue OpenClaw lab session (see NEXT_STEPS.md)
   console.log(`[submit] Queued lab session for ${ctx.authorDid} @ ${commitHash}`);
@@ -66,13 +66,13 @@ export async function handleSubmit(ctx: SubmitContext): Promise<string> {
 }
 
 async function writeToBotPds(
-  client: RoomyClient,
+  agent: AtpAgent,
   record: ReturnType<typeof makeAssignment>,
 ): Promise<string> {
-  const result = await client.agent.api.com.atproto.repo.createRecord({
-    repo: client.agent.assertDid,
+  const result = await agent.api.com.atproto.repo.createRecord({
+    repo: agent.assertDid,
     collection: LEXICON.ASSIGNMENT,
-    record,
+    record: record as unknown as Record<string, unknown>,
   });
   return result.data.uri;
 }

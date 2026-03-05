@@ -8,6 +8,29 @@
     "dev": {
       "cache": false,
       "persistent": true
+    },
+    "lint": {},
+    "compose:build": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
+    "compose:up": {
+      "cache": false,
+      "persistent": true
+    },
+    "compose:down": {
+      "cache": false
+    },
+    "compose:prod:build": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
+    "compose:prod:up": {
+      "cache": false,
+      "persistent": true
+    },
+    "compose:prod:down": {
+      "cache": false
     }
   }
 }

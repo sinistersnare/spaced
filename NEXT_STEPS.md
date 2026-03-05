@@ -13,16 +13,16 @@ The platform has two roles:
 
 ---
 
-## Current State (what exists in this repo)
+## Current State
 
 ```
 packages/lab-bridge/
 ├── src/
-│   ├── env.ts              — environment variable declarations
+│   ├── env.ts              — environment variable declarations (PDS_URL, LEAF_URL, etc.)
 │   ├── constants.ts        — NSID strings for edu.roomy.* record types
-│   ├── index.ts            — entry point
-│   ├── HubOrchestrator.ts  — main event loop (STUB — see below)
-│   ├── roomy/client.ts     — ATProto + Roomy client init (copy of discord-bridge pattern)
+│   ├── index.ts            — entry point (HTTP health route + HubOrchestrator start)
+│   ├── HubOrchestrator.ts  — event loop using real @roomy/sdk API (joinSpace, subscribe, createMessage)
+│   ├── roomy/client.ts     — ATProto + RoomyClient init; session persistence to session.json
 │   ├── roles/permissions.ts — teacher/student role checking (file-backed JSON)
 │   ├── lexicons/
 │   │   ├── lesson.ts       — edu.roomy.lesson record type
@@ -30,47 +30,32 @@ packages/lab-bridge/
 │   │   ├── verification.ts — edu.roomy.verification record type
 │   │   └── labSession.ts   — edu.roomy.labSession record type
 │   └── commands/
-│       ├── submit.ts       — /submit <commithash> handler
+│       ├── submit.ts       — /submit <commithash> handler (writes to bot PDS via AtpAgent)
 │       ├── lecture.ts      — /lecture [lessonUri] handler
 │       └── grade.ts        — /grade <assignmentUri> <grade> [feedback] handler
+
+infra/
+├── compose.yml             — local dev compose (reads .env + .env.local)
+└── compose.prod.yml        — production compose skeleton (env vars injected externally)
+
+packages/lab-bridge/Dockerfile  — multi-stage build (tsc → node:22-alpine runtime)
 ```
+
+**SDK:** `@roomy/sdk` via `file:` reference to local `~/github.com/muni-town/roomy/packages/sdk`.
+Not published to npm — for Docker builds, replace with a `git+https://` reference.
+
+**Environment management:** `dotenvx` with layered env files:
+- `packages/lab-bridge/.env` — committed defaults (non-secret)
+- `packages/lab-bridge/.env.local` / `.env.dev` / `.env.prod` — gitignored overrides
 
 ---
 
 ## What Needs to Be Done Next (in priority order)
 
-### 1. Wire the Roomy SDK event subscription — BLOCKING
+### 1. Delegated PDS writes for student records — HIGH PRIORITY
 
-`HubOrchestrator.ts` has a stub for `client.connectSpace()` and `space.on("message:create", ...)`.
-**These method names are guesses based on reading the discord-bridge source.** Before anything else
-works, the real API needs to be established.
-
-**Action:** Read `packages/sdk/src/client/RoomyClient.ts` and `packages/sdk/src/connection/ConnectedSpace.ts`
-in the [roomy repo](https://github.com/muni-town/roomy) and replace the stubs in `HubOrchestrator.ts`
-with the real SDK calls. Also figure out how to post a reply message back into a room — the equivalent
-of `bot.helpers.sendMessage` in the discord-bridge.
-
-**Files to change:** `src/HubOrchestrator.ts`, possibly `src/commands/*.ts`
-
----
-
-### 2. Sending messages back to Roomy — BLOCKING
-
-The `HubOrchestrator.onMessage` handler currently logs replies to the console. It needs to call
-the correct `@roomy/sdk` API to post a text message into the originating room.
-
-**Action:** Find how `discord-bridge/src/roomy/from.ts` (or the discord-bridge services) write
-messages into Roomy, and replicate the pattern for bot replies.
-
----
-
-### 3. Delegated PDS writes for student records — HIGH PRIORITY
-
-Currently `handleSubmit` writes the `edu.roomy.assignment` record to the **bot's** PDS under the
-student's DID. For true data sovereignty, this record should live on the **student's** PDS.
-
-ATProto supports this via OAuth2 authorization — the student must open a consent screen and
-authorize the bot app to write to their PDS. The AT Protocol OAuth spec (ATPROTO-OAUTH) documents this.
+Currently `handleSubmit` writes `edu.roomy.assignment` records to the **bot's** PDS.
+For true data sovereignty, records should live on the **student's** PDS.
 
 **Options (cheapest to most sovereign):**
 1. Bot writes to its own PDS, records reference `studentDid` by field — simplest, no auth required
@@ -81,7 +66,21 @@ authorize the bot app to write to their PDS. The AT Protocol OAuth spec (ATPROTO
 
 ---
 
-### 4. OpenClaw integration — HIGH PRIORITY
+### 2. Fix `/grade` — `lessonUri` placeholder — BLOCKING
+
+`grade.ts:43` has a hardcoded `at://todo/lookup-from-assignment` placeholder for `lessonUri`.
+Every verification record written by `/grade` currently contains a bogus AT-URI, making the
+command non-functional in practice.
+
+**Action:** After writing the assignment record (or via a PDS lookup), derive `lessonUri` from
+the actual `edu.roomy.assignment` record at `assignmentUri`. This requires fetching the record
+via `ctx.agent.api.com.atproto.repo.getRecord` (or equivalent), then reading its `lessonUri` field.
+
+**Files to change:** `src/commands/grade.ts`
+
+---
+
+### 3. OpenClaw integration — HIGH PRIORITY
 
 `handleSubmit` queues a lab session but doesn't actually call anything. OpenClaw (or whatever
 the sandbox runner is) needs to be integrated here.
@@ -99,11 +98,9 @@ the API is known, and wire it into `handleSubmit`.
 
 ---
 
-### 5. Lecture command — design decision needed
+### 4. Lecture command — design decision needed
 
-`/lecture <lessonUri>` currently just sets an in-memory active lesson for the channel. The user
-has described wanting `/lecture` to also "start a Zoom call and create an object in the Roomy space
-that can be replied to like a thread."
+`/lecture <lessonUri>` currently just sets an in-memory active lesson for the channel.
 
 **Options:**
 - (a) Just the in-memory lesson context (current) — useful but minimal
@@ -111,61 +108,68 @@ that can be replied to like a thread."
 - (c) Call a Zoom API to create a meeting and post the link as a pinned message
 - (d) b + c
 
-**Action:** Get clarity on what /lecture should do, then implement. For (c), a Zoom API key
-and OAuth app are needed. For (b), look at how Roomy pages/threads are created in the SDK.
+**Action:** Decide what `/lecture` should do. For (c), a Zoom OAuth app is needed. For (b),
+check how Roomy pages/threads are created in `@roomy/sdk`.
 
 ---
 
-### 6. Teacher admin API
+### 5. Teacher admin API
 
-The `roles/permissions.ts` grants/revokes teacher status but there's no HTTP endpoint to call it.
-Add a small admin API (the discord-bridge uses `itty-router` + `@whatwg-node/server`, already
-in our package.json) protected by a secret token.
+`roles/permissions.ts` grants/revokes teacher status but there's no HTTP endpoint to trigger it.
+Add a small admin API protected by a secret token (`itty-router` + `@whatwg-node/server` are
+already in `package.json`).
 
 **Files to create:** `src/api.ts`
 
 ---
 
-### 7. Lesson management commands
+### 6. Lesson management commands
 
 Teachers need a way to create and list lessons without manually crafting AT-URIs.
 
 **Commands to add:**
-- `/lesson create <title>` — wizard-style or prompted via DM
-- `/lesson list` — shows lessons on the teacher's PDS in the current space
-- `/lesson show <uri>` — displays lesson content in the channel
+- `/lesson create <title>`
+- `/lesson list`
+- `/lesson show <uri>`
+
+---
+
+### 7. Publish / pin `@roomy/sdk`
+
+The `file:` reference to the local roomy repo means Docker builds require a manual swap.
+Once `@roomy/sdk` is published to npm (or a stable git tag exists), update
+`packages/lab-bridge/package.json` and remove the workaround comment from the Dockerfile.
 
 ---
 
 ### 8. Custom Leaf plugin (Rust) — DEFERRED
 
-The compose.yaml in the roomy repo pulls a prebuilt Leaf image. For custom Leaf behavior
-(stream-level access control, per-role event filtering, etc.) we'd need to:
+For stream-level access control or per-role event filtering we'd need to fork
+[leaf](https://github.com/muni-town/leaf) and build a custom Docker image.
 
-1. Fork the [leaf repo](https://github.com/muni-town/leaf)
-2. Implement a plugin implementing the Leaf plugin trait
-3. Build a custom Docker image and reference it in this repo's compose.yaml
-
-**This is deferred** because we don't yet know what behavior needs to live at the Leaf layer
-vs. being handled in the lab-bridge service. Most of the above can be done without Leaf changes.
-Revisit after steps 1–5 are complete.
+**Deferred** until it's clear what behavior belongs at the Leaf layer vs. lab-bridge.
 
 ---
 
 ## Environment Setup
 
-Copy `.env.example` to `.env` in `packages/lab-bridge/` and fill in:
+`packages/lab-bridge/.env` is committed with safe defaults. Create `.env.local` for secrets:
 
 ```env
-BOT_DID=did:plc:...          # ATProto DID of the bot account
-BOT_APP_PASSWORD=xxxx-...    # App password (not your main password)
-TEACHER_DIDS=did:plc:...     # Comma-separated teacher DIDs (required to bootstrap)
-SPACE_DIDS=did:plc:...       # Comma-separated Roomy space DIDs to watch
-LEAF_URL=...                 # Leaf server URL
+BOT_DID=did:plc:yourbot
+BOT_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
+SPACE_DIDS=did:plc:yourspace
 ```
 
-The Roomy dev stack (leaf-server, pds, plc-directory) can be run from the
-[roomy repo](https://github.com/muni-town/roomy) via `docker compose up`.
+**For the local caddy stack** (user's `caddy` branch of roomy — self-hosted PDS + Leaf):
+```env
+PDS_URL=http://localhost:2583
+LEAF_URL=https://app.localhost/leaf
+LEAF_SERVER_DID=did:web:app.localhost
+```
+
+Run dev with: `pnpm --filter lab-bridge dev`
+Run via compose: `cd infra && pnpm compose:up` (or `pnpm turbo compose:up` from root)
 
 ---
 
@@ -195,3 +199,13 @@ The Roomy dev stack (leaf-server, pds, plc-directory) can be run from the
     │ results  │ student's portable
     └──────────┘ academic record
 ```
+
+
+## Added by Davis
+
+The following was added by Claude into CLAUDE.md, but they seem like good things to keep in mind for what we need to work on to get this ready for prime-time.
+
+## Key constraints
+- `@roomy/sdk` is a `file:` reference — Docker builds will fail unless replaced with a `git+https://` ref
+- The local roomy repo (`~/github.com/muni-town/roomy`) is on the `caddy` branch, which adds a self-hosted PDS + Leaf via Caddy
+- Secrets (`BOT_APP_PASSWORD`, etc.) must never be committed; `.gitignore` covers `*.env.*`

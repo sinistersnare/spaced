@@ -8,6 +8,7 @@ import { RoomyClient } from "@roomy/sdk";
 import {
   BOT_DID,
   BOT_APP_PASSWORD,
+  PDS_URL,
   LEAF_URL,
   LEAF_SERVER_DID,
   STREAM_HANDLE_NSID,
@@ -50,13 +51,18 @@ function deleteSession(): void {
   }
 }
 
-export async function initRoomyClient(): Promise<RoomyClient> {
+export interface RoomyInit {
+  client: RoomyClient;
+  agent: AtpAgent;
+}
+
+export async function initRoomyClient(): Promise<RoomyInit> {
   console.log("Initializing ATProto agent...");
 
   const existingSession = loadSession();
 
   const agent = new AtpAgent({
-    service: "https://bsky.social",
+    service: PDS_URL,
     persistSession: (evt, session) => {
       if (evt === "create" || evt === "update") {
         saveSession(session);
@@ -94,5 +100,5 @@ export async function initRoomyClient(): Promise<RoomyClient> {
   });
 
   console.log("Roomy client ready.");
-  return client;
+  return { client, agent };
 }

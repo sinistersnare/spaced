@@ -8,17 +8,22 @@
   "scripts": {
     "build": "tsc --project tsconfig.json",
     "start": "tsx src/index.ts",
-    "dev": "tsx watch src/index.ts"
+    "start:local": "dotenvx run --env-file .env --env-file .env.local -- tsx src/index.ts",
+    "start:dev": "dotenvx run --env-file .env --env-file .env.dev -- tsx src/index.ts",
+    "start:prod": "dotenvx run --env-file .env --env-file .env.prod -- tsx src/index.ts",
+    "dev": "dotenvx run --env-file .env --env-file .env.local -- tsx watch src/index.ts",
+    "lint": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
     "@atproto/api": "^0.14.22",
-    "@roomy/sdk": "^0.3.0",
+    "@roomy/sdk": "file:/Users/davis/github.com/muni-town/roomy/packages/sdk",
     "arktype": "^2.0.0",
     "dotenv": "^17.2.1",
     "itty-router": "^5.0.20",
     "@whatwg-node/server": "^0.10.11"
   },
   "devDependencies": {
+    "@dotenvx/dotenvx": "^1.0.0",
     "@types/node": "^22.0.0",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3"

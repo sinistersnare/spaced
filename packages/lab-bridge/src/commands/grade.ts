@@ -9,7 +9,7 @@
  *   /grade at://did:plc:.../edu.roomy.assignment/rkey A+ "Great work on the binary tree!"
  */
 
-import type { RoomyClient } from "@roomy/sdk";
+import type { AtpAgent } from "@atproto/api";
 import { isTeacher } from "../roles/permissions.js";
 import { makeVerification } from "../lexicons/verification.js";
 import { LEXICON } from "../constants.js";
@@ -17,7 +17,7 @@ import { LEXICON } from "../constants.js";
 export interface GradeContext {
   authorDid: string;
   args: string[];
-  client: RoomyClient;
+  agent: AtpAgent;
 }
 
 export async function handleGrade(ctx: GradeContext): Promise<string> {
@@ -50,10 +50,10 @@ export async function handleGrade(ctx: GradeContext): Promise<string> {
     feedback,
   });
 
-  const result = await ctx.client.agent.api.com.atproto.repo.createRecord({
-    repo: ctx.client.agent.assertDid,
+  const result = await ctx.agent.api.com.atproto.repo.createRecord({
+    repo: ctx.agent.assertDid,
     collection: LEXICON.VERIFICATION,
-    record,
+    record: record as unknown as Record<string, unknown>,
   });
 
   return (

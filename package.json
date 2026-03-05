@@ -2,12 +2,18 @@
   "name": "spaced",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.0.0",
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
+    "lint": "turbo lint",
     "dev:bridge": "pnpm --filter lab-bridge dev"
   },
   "devDependencies": {
+    "@types/node": "^22.19.13",
     "turbo": "^2.0.0"
+  },
+  "dependencies": {
+    "typescript": "^5.8.3"
   }
 }
