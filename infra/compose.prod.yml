@@ -1,4 +1,9 @@
-# Production compose skeleton.
+# Production compose skeleton — lab-bridge only.
+#
+# In production, lab-bridge points to external managed services by default
+# (PDS_URL=https://bsky.social, LEAF_URL=https://leaf-dev.muni.town).
+# Self-hosting the full AT Protocol stack in production is a future item
+# (see NEXT_STEPS.md).
 #
 # Secrets are supplied via environment variables (e.g. from a .env.prod file
 # loaded by dotenvx, or injected by your CI/CD system).

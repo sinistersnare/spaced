@@ -1,25 +1,118 @@
-# Local development compose — assumes you have the roomy caddy stack running
-# separately (cd ~/github.com/muni-town/roomy && docker compose up).
+# Local development compose for Spaced.
 #
-# The lab-bridge connects to PDS_URL / LEAF_URL defined in
-# packages/lab-bridge/.env.local (override .env defaults).
+# Runs the AT Protocol infrastructure: Caddy, PDS, PLC directory, and Leaf.
+# The Roomy web app runs separately from the roomy repo (pnpm dev there).
+# lab-bridge runs natively via: pnpm --filter lab-bridge dev
 #
-# NOTE: @roomy/sdk is currently a file: reference to a local path.
-# Before running `compose:build`, either:
-#   a) Mount the SDK source into the build context, OR
-#   b) Replace the dep in packages/lab-bridge/package.json:
-#      "@roomy/sdk": "git+https://github.com/muni-town/roomy.git#workspace=packages/sdk"
+# First-time setup: pnpm setup  (from infra/ directory)
+# Daily use:        docker compose up
 
 name: spaced-local
 
 services:
-  lab-bridge:
-    build:
-      context: ..
-      dockerfile: packages/lab-bridge/Dockerfile
-    env_file:
-      - ../packages/lab-bridge/.env
-      - ../packages/lab-bridge/.env.local
-    restart: unless-stopped
+
+  # ── Reverse proxy (HTTPS for localhost domains) ──────────────────────────
+  caddy:
+    image: caddy:2-alpine
     ports:
-      - "3401:3401"
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - roomy-dev
+    restart: unless-stopped
+
+  # ── Personal Data Server ─────────────────────────────────────────────────
+  pds:
+    image: node:20-alpine
+    working_dir: /pds
+    command: sh -c "npm install && npm start"
+    volumes:
+      - ./pds:/pds
+      - pds-data:/data
+    environment:
+      - PDS_HOSTNAME=localhost
+      - PDS_PORT=2583
+      - PDS_ADMIN_PASSWORD=pwpw
+      - PDS_JWT_SECRET=local-dev-secret-key-change-in-production
+      - PDS_PLC_ROTATION_KEY_K256_PRIVATE_KEY_HEX=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      - PDS_BLOBSTORE_DISK_LOCATION=/data/blocks
+      - PDS_DB_SQLITE_LOCATION=/data/pds.sqlite
+      - PDS_DID_PLC_URL=http://plc-directory:3000
+      - PDS_SERVICE_DID=did:web:localhost
+      - PDS_DATA_DIRECTORY=/data
+      - PDS_CRAWLERS=
+      - PDS_INVITE_REQUIRED=true
+      - PDS_DEV_MODE=true
+      - PDS_SERVICE_HANDLE_DOMAINS=.localhost
+      - PDS_HANDLE_RESOLVER_NAMESERVERS=1.1.1.1,8.8.8.8
+    ports:
+      - "2583:2583"
+    networks:
+      - roomy-dev
+    depends_on:
+      - plc-directory
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:2583/xrpc/_health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # ── PLC Directory (DID resolution) ───────────────────────────────────────
+  plc-directory:
+    image: ghcr.io/zicklag/did-plc-server:plc-053ddecb6a12ce0e996d300f9395899adf02dd05
+    ports:
+      - "3001:3000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:password@plc-db:5432/postgres
+      - DEBUG=*
+      - NODE_ENV=development
+    networks:
+      - roomy-dev
+    depends_on:
+      - plc-db
+    restart: unless-stopped
+
+  plc-db:
+    image: postgres
+    environment:
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - plc-db-data:/var/lib/postgresql
+    networks:
+      - roomy-dev
+    restart: unless-stopped
+
+  # ── Leaf Server (event streaming) ────────────────────────────────────────
+  leaf-server:
+    image: ghcr.io/muni-town/leaf:sha-7a3e136
+    ports:
+      - "5530:5530"
+    volumes:
+      - leaf-data:/data
+    environment:
+      - DID=did:web:app.localhost
+      - PLC_DIRECTORY=http://plc-directory:3000
+      - ENDPOINT=https://app.localhost/leaf/
+    networks:
+      - roomy-dev
+    restart: unless-stopped
+
+networks:
+  roomy-dev:
+    name: roomy-dev
+    external: true
+
+volumes:
+  leaf-data:
+  plc-db-data:
+  pds-data:
+  caddy-data:
+  caddy-config:

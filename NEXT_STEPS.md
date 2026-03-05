@@ -16,6 +16,8 @@ The platform has two roles:
 ## Current State
 
 ```
+README.md                   — getting started guide
+
 packages/lab-bridge/
 ├── src/
 │   ├── env.ts              — environment variable declarations (PDS_URL, LEAF_URL, etc.)
@@ -33,12 +35,25 @@ packages/lab-bridge/
 │       ├── submit.ts       — /submit <commithash> handler (writes to bot PDS via AtpAgent)
 │       ├── lecture.ts      — /lecture [lessonUri] handler
 │       └── grade.ts        — /grade <assignmentUri> <grade> [feedback] handler
+├── Dockerfile              — multi-stage build (tsc → node:22-alpine runtime)
 
 infra/
-├── compose.yml             — local dev compose (reads .env + .env.local)
-└── compose.prod.yml        — production compose skeleton (env vars injected externally)
+├── Caddyfile               — local HTTPS reverse proxy (localhost → PDS, app.localhost → Leaf/PLC/app)
+├── compose.yml             — full local dev stack (Caddy, PDS, PLC directory, Leaf server)
+├── compose.prod.yml        — production skeleton (lab-bridge → external managed services)
+├── pds/                    — @atproto/pds wrapper for the local PDS container
+│   ├── package.json
+│   └── index.mjs           — env vars injected by compose.yml, no .env needed
+└── scripts/
+    └── setup-local.sh      — creates roomy-dev network, starts infra, provisions bot/teacher/student accounts
+```
 
-packages/lab-bridge/Dockerfile  — multi-stage build (tsc → node:22-alpine runtime)
+**Local dev workflow:**
+```bash
+cd infra && pnpm setup        # one-time: create network, start infra, create accounts
+pnpm turbo compose:up         # daily: start infra stack
+cd ~/github.com/muni-town/roomy && pnpm dev  # start Roomy web app (separate repo)
+pnpm --filter lab-bridge dev  # start the bot
 ```
 
 **SDK:** `@roomy/sdk` via `file:` reference to local `~/github.com/muni-town/roomy/packages/sdk`.
@@ -72,9 +87,8 @@ For true data sovereignty, records should live on the **student's** PDS.
 Every verification record written by `/grade` currently contains a bogus AT-URI, making the
 command non-functional in practice.
 
-**Action:** After writing the assignment record (or via a PDS lookup), derive `lessonUri` from
-the actual `edu.roomy.assignment` record at `assignmentUri`. This requires fetching the record
-via `ctx.agent.api.com.atproto.repo.getRecord` (or equivalent), then reading its `lessonUri` field.
+**Action:** Fetch the assignment record via `ctx.agent.api.com.atproto.repo.getRecord`, read its
+`lessonUri` field, and use that in the verification record.
 
 **Files to change:** `src/commands/grade.ts`
 
@@ -89,12 +103,8 @@ the sandbox runner is) needs to be integrated here.
 - What is the OpenClaw API surface? (HTTP? gRPC? CLI?)
 - What does a "run tests on this commit" request look like?
 - How does OpenClaw return results? (webhook? polling?)
-- Does it need a repo URL, or just a commit hash + git remote?
 
-**Action:** Define the OpenClaw client interface in `src/openclaw/client.ts`, implement it once
-the API is known, and wire it into `handleSubmit`.
-
-**Files to create:** `src/openclaw/client.ts`, `src/openclaw/types.ts`
+**Action:** Define `src/openclaw/client.ts`, implement once API is known, wire into `handleSubmit`.
 
 ---
 
@@ -104,20 +114,16 @@ the API is known, and wire it into `handleSubmit`.
 
 **Options:**
 - (a) Just the in-memory lesson context (current) — useful but minimal
-- (b) Create a Roomy page/thread pinned in the channel containing the lesson markdown
-- (c) Call a Zoom API to create a meeting and post the link as a pinned message
+- (b) Create a Roomy page/thread pinned in the channel with lesson markdown
+- (c) Call a Zoom API to create a meeting and post the link
 - (d) b + c
-
-**Action:** Decide what `/lecture` should do. For (c), a Zoom OAuth app is needed. For (b),
-check how Roomy pages/threads are created in `@roomy/sdk`.
 
 ---
 
 ### 5. Teacher admin API
 
-`roles/permissions.ts` grants/revokes teacher status but there's no HTTP endpoint to trigger it.
-Add a small admin API protected by a secret token (`itty-router` + `@whatwg-node/server` are
-already in `package.json`).
+`roles/permissions.ts` grants/revokes teacher status but there's no HTTP endpoint.
+Add a small admin API protected by a secret token (itty-router + @whatwg-node/server already in deps).
 
 **Files to create:** `src/api.ts`
 
@@ -125,9 +131,6 @@ already in `package.json`).
 
 ### 6. Lesson management commands
 
-Teachers need a way to create and list lessons without manually crafting AT-URIs.
-
-**Commands to add:**
 - `/lesson create <title>`
 - `/lesson list`
 - `/lesson show <uri>`
@@ -136,40 +139,47 @@ Teachers need a way to create and list lessons without manually crafting AT-URIs
 
 ### 7. Publish / pin `@roomy/sdk`
 
-The `file:` reference to the local roomy repo means Docker builds require a manual swap.
-Once `@roomy/sdk` is published to npm (or a stable git tag exists), update
-`packages/lab-bridge/package.json` and remove the workaround comment from the Dockerfile.
+The `file:` reference means Docker builds require a manual swap.
+Once `@roomy/sdk` is published or tagged, update `packages/lab-bridge/package.json`.
 
 ---
 
-### 8. Custom Leaf plugin (Rust) — DEFERRED
+### 8. Observability stack for local dev — FUTURE INFRA IMPROVEMENT
+
+The Grafana stack (Loki, Tempo, Mimir, Pyroscope, Alloy) used in the roomy caddy branch
+would be valuable for debugging the bot in local dev. Add it to `infra/compose.yml` behind a
+`--profile observability` flag and add a `compose:observability` script to `infra/package.json`.
+
+---
+
+### 9. Self-hosted production infra — DEFERRED
+
+`infra/compose.prod.yml` currently only runs lab-bridge, pointing at external managed services
+(bsky.social PDS, leaf-dev.muni.town Leaf). A fully self-hosted production setup would add PDS,
+PLC, Leaf, and Caddy to the prod compose with production-grade secrets and volumes.
+
+---
+
+### 10. Custom Leaf plugin (Rust) — DEFERRED
 
 For stream-level access control or per-role event filtering we'd need to fork
 [leaf](https://github.com/muni-town/leaf) and build a custom Docker image.
-
-**Deferred** until it's clear what behavior belongs at the Leaf layer vs. lab-bridge.
 
 ---
 
 ## Environment Setup
 
-`packages/lab-bridge/.env` is committed with safe defaults. Create `.env.local` for secrets:
+`packages/lab-bridge/.env` is committed with safe defaults. Create `.env.local` for secrets
+(output by `infra/scripts/setup-local.sh` after running `pnpm setup` from `infra/`):
 
 ```env
-BOT_DID=did:plc:yourbot
-BOT_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
-SPACE_DIDS=did:plc:yourspace
-```
-
-**For the local caddy stack** (user's `caddy` branch of roomy — self-hosted PDS + Leaf):
-```env
+BOT_DID=did:plc:...
+BOT_APP_PASSWORD=password123
 PDS_URL=http://localhost:2583
 LEAF_URL=https://app.localhost/leaf
 LEAF_SERVER_DID=did:web:app.localhost
+SPACE_DIDS=did:plc:...   # DID of a space created in the Roomy web app
 ```
-
-Run dev with: `pnpm --filter lab-bridge dev`
-Run via compose: `cd infra && pnpm compose:up` (or `pnpm turbo compose:up` from root)
 
 ---
 
@@ -178,13 +188,13 @@ Run via compose: `cd infra && pnpm compose:up` (or `pnpm turbo compose:up` from 
 ```
  Student / Teacher
        │
-       │  Roomy (AT Protocol + Leaf)
+       │  Roomy web app (app.localhost)
        ▼
  ┌─────────────────────┐
  │   Roomy Space       │  ←── messages, threads, reactions
  │   (one per course)  │
  └─────────┬───────────┘
-           │ event stream
+           │ Leaf event stream
            ▼
  ┌─────────────────────┐
  │  HubOrchestrator    │  ←── watches for /submit /lecture /grade
@@ -200,12 +210,7 @@ Run via compose: `cd infra && pnpm compose:up` (or `pnpm turbo compose:up` from 
     └──────────┘ academic record
 ```
 
-
-## Added by Davis
-
-The following was added by Claude into CLAUDE.md, but they seem like good things to keep in mind for what we need to work on to get this ready for prime-time.
-
 ## Key constraints
 - `@roomy/sdk` is a `file:` reference — Docker builds will fail unless replaced with a `git+https://` ref
-- The local roomy repo (`~/github.com/muni-town/roomy`) is on the `caddy` branch, which adds a self-hosted PDS + Leaf via Caddy
+- The local roomy repo (`~/github.com/muni-town/roomy`) is on the `caddy` branch
 - Secrets (`BOT_APP_PASSWORD`, etc.) must never be committed; `.gitignore` covers `*.env.*`

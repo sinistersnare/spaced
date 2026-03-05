@@ -4,6 +4,8 @@
   "private": true,
   "description": "Docker Compose infrastructure for Spaced",
   "scripts": {
+    "setup:network": "docker network create roomy-dev 2>/dev/null || true",
+    "setup": "pnpm setup:network && bash scripts/setup-local.sh",
     "compose:build": "docker compose -f compose.yml build",
     "compose:up": "docker compose -f compose.yml up",
     "compose:down": "docker compose -f compose.yml down",

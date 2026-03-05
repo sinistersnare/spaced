@@ -1,0 +1,59 @@
+# Caddyfile for local Spaced / Roomy development
+# Provides automatic HTTPS for localhost domains via a local CA.
+#
+# Run `caddy trust` once to install the local CA cert in your system store,
+# or use: docker compose exec caddy caddy trust
+#
+# The Roomy web app (port 5174) must be running separately:
+#   cd ~/github.com/muni-town/roomy && pnpm dev
+
+{
+    # Use local CA for development
+    local_certs
+}
+
+# Main PDS - accessible via https://localhost
+localhost {
+    reverse_proxy pds:2583
+}
+
+# App gateway: DID resolution, XRPC, PLC, Leaf, and Roomy web UI
+app.localhost {
+    # Serve custom DID document for Leaf server (overrides Leaf's default)
+    handle /.well-known/did.json {
+        header Content-Type application/json
+        respond `{
+  "@context": ["https://www.w3.org/ns/did/v1"],
+  "id": "did:web:app.localhost",
+  "service": [{
+    "id": "#leaf_server",
+    "serviceEndpoint": "https://app.localhost/leaf/",
+    "type": "LeafServer"
+  }]
+}`
+    }
+
+    # Proxy XRPC (PDS) endpoints directly
+    handle /xrpc/* {
+        reverse_proxy pds:2583
+    }
+
+    # Proxy PLC Directory
+    handle /plc/* {
+        uri strip_prefix /plc
+        reverse_proxy plc-directory:3001
+    }
+
+    # Proxy Leaf server API (with WebSocket support for Socket.IO)
+    handle /leaf/* {
+        uri strip_prefix /leaf
+        reverse_proxy leaf-server:5530 {
+            # Enable WebSocket support
+            header_up Upgrade {>Upgrade}
+            header_up Connection {>Connection}
+        }
+    }
+
+    # Proxy Roomy web app (must be running: cd ~/muni-town/roomy && pnpm dev)
+    reverse_proxy host.docker.internal:5174
+}

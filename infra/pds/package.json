@@ -1,0 +1,13 @@
+{
+  "name": "spaced-local-pds",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Lightweight local PDS for Spaced development and testing",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "dependencies": {
+    "@atproto/pds": "^0.4.209",
+    "dotenv": "^16.4.5"
+  }
+}
