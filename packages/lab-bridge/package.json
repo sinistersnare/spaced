@@ -8,10 +8,10 @@
   "scripts": {
     "build": "tsc --project tsconfig.json",
     "start": "tsx src/index.ts",
-    "start:local": "dotenvx run --env-file .env --env-file .env.local -- tsx src/index.ts",
-    "start:dev": "dotenvx run --env-file .env --env-file .env.dev -- tsx src/index.ts",
-    "start:prod": "dotenvx run --env-file .env --env-file .env.prod -- tsx src/index.ts",
-    "dev": "dotenvx run --env-file .env --env-file .env.local -- tsx watch src/index.ts",
+    "start:local": "dotenvx run --env-file ../../.env --env-file ../../.env.local -- tsx src/index.ts",
+    "start:dev": "dotenvx run --env-file ../../.env --env-file ../../.env.dev -- tsx src/index.ts",
+    "start:prod": "dotenvx run --env-file ../../.env --env-file ../../.env.prod -- tsx src/index.ts",
+    "dev": "dotenvx run --env-file ../../.env --env-file ../../.env.local -- tsx watch src/index.ts",
     "lint": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {

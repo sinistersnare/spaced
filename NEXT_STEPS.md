@@ -17,6 +17,8 @@ The platform has two roles:
 
 ```
 README.md                   — getting started guide
+.env                        — committed non-secret defaults (PDS_URL, LEAF_URL, etc.)
+.env.example                — template for .env.local secrets
 
 packages/lab-bridge/
 ├── src/
@@ -39,7 +41,7 @@ packages/lab-bridge/
 
 infra/
 ├── Caddyfile               — local HTTPS reverse proxy (localhost → PDS, app.localhost → Leaf/PLC/app)
-├── compose.yml             — full local dev stack (Caddy, PDS, PLC directory, Leaf server)
+├── compose.yml             — full local dev stack (Caddy, PDS, PLC directory, Leaf + observability: Grafana/Loki/Mimir/Tempo/Pyroscope/Alloy)
 ├── compose.prod.yml        — production skeleton (lab-bridge → external managed services)
 ├── pds/                    — @atproto/pds wrapper for the local PDS container
 │   ├── package.json
@@ -60,8 +62,8 @@ pnpm --filter lab-bridge dev  # start the bot
 Not published to npm — for Docker builds, replace with a `git+https://` reference.
 
 **Environment management:** `dotenvx` with layered env files:
-- `packages/lab-bridge/.env` — committed defaults (non-secret)
-- `packages/lab-bridge/.env.local` / `.env.dev` / `.env.prod` — gitignored overrides
+- `.env` (repo root) — committed defaults (non-secret)
+- `.env.local` / `.env.dev` / `.env.prod` (repo root) — gitignored overrides
 
 ---
 
@@ -144,15 +146,7 @@ Once `@roomy/sdk` is published or tagged, update `packages/lab-bridge/package.js
 
 ---
 
-### 8. Observability stack for local dev — FUTURE INFRA IMPROVEMENT
-
-The Grafana stack (Loki, Tempo, Mimir, Pyroscope, Alloy) used in the roomy caddy branch
-would be valuable for debugging the bot in local dev. Add it to `infra/compose.yml` behind a
-`--profile observability` flag and add a `compose:observability` script to `infra/package.json`.
-
----
-
-### 9. Self-hosted production infra — DEFERRED
+### 8. Self-hosted production infra — DEFERRED
 
 `infra/compose.prod.yml` currently only runs lab-bridge, pointing at external managed services
 (bsky.social PDS, leaf-dev.muni.town Leaf). A fully self-hosted production setup would add PDS,
@@ -169,14 +163,14 @@ For stream-level access control or per-role event filtering we'd need to fork
 
 ## Environment Setup
 
-`packages/lab-bridge/.env` is committed with safe defaults. Create `.env.local` for secrets
-(output by `infra/scripts/setup-local.sh` after running `pnpm setup` from `infra/`):
+`.env` at the repo root is committed with safe defaults. Create `.env.local` at the repo root
+for secrets (printed by `infra/scripts/setup-local.sh` after running `pnpm setup` from `infra/`):
 
 ```env
 BOT_DID=did:plc:...
 BOT_APP_PASSWORD=password123
 PDS_URL=http://localhost:2583
-LEAF_URL=https://app.localhost/leaf
+LEAF_URL=http://localhost:5530
 LEAF_SERVER_DID=did:web:app.localhost
 SPACE_DIDS=did:plc:...   # DID of a space created in the Roomy web app
 ```

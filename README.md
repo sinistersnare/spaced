@@ -25,13 +25,13 @@ pnpm install
 cd infra && pnpm setup
 ```
 
-The setup script starts Caddy, PDS, PLC directory, and Leaf server, then creates three local accounts (`spaced-bot`, `teacher`, `student`) and prints the credentials. Copy the output block into `packages/lab-bridge/.env.local`:
+The setup script starts Caddy, PDS, PLC directory, and Leaf server, then creates three local accounts (`spaced-bot`, `teacher`, `student`) and prints the credentials. Copy the output block into `.env.local` at the **repo root**:
 
 ```
 BOT_DID=did:plc:...
 BOT_APP_PASSWORD=password123
 PDS_URL=http://localhost:2583
-LEAF_URL=https://app.localhost/leaf
+LEAF_URL=http://localhost:5530
 LEAF_SERVER_DID=did:web:app.localhost
 ```
 
@@ -66,6 +66,8 @@ pnpm --filter lab-bridge dev
 | Roomy web app | https://app.localhost |
 | PDS | https://localhost |
 | Leaf server | http://localhost:5530 |
+| Grafana | http://localhost:3000 |
+| Alloy UI | http://localhost:5005 |
 
 ## Bot commands
 
